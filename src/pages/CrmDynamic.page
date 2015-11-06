@@ -1,0 +1,335 @@
+<apex:page sidebar="false" showHeader="false" docType="html-5.0">
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Customer Relationship Management System - force adapter demo</title>
+
+<!-- request all your ember dependencies -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+<script src="{!$Resource.emberTemplate}"></script>
+<script src="{!$Resource.emberDebug}"></script>
+<script src="{!$Resource.emberData}"></script>
+
+<!-- request the salesforce soap javascript dependency     -->
+<script src="/soap/ajax/33.0/connection.js"></script>
+<!-- set the session id - if you leave this line out, sometimes you might get a session error -->
+<script>sforce.connection.sessionId = "{!$Api.Session_ID}";</script>
+<!-- require the force adapter dependenfy -->
+<script src="{!$Resource.forceAdapter}"></script>
+
+</head>
+<body>
+<!-- I have made all the templates inline so that the page is easier to setup and understand.  -->
+<!-- You could define your templates in salesforce components or in static resources and fetch them using an -->
+<!-- ajax request -->
+<script type="text/x-handlebars">
+<ul class="nav">
+	<li>{{#link-to "accounts" }}Accounts{{/link-to}}</li>
+</ul> 	
+{{outlet}}
+</script>
+
+<script type="text/x-handlebars" data-template-name="accounts">
+<div class='so-list-view'>
+	<aside>
+	<menu>
+		<button {{action 'add'}} class='act'>add</button>
+	</menu>
+	<ul>
+		{{#each account in model}}
+		<li>{{#link-to "account" account}}<span class='so-name'>{{account.Name}}</span><small class='mute-info'>owner : {{account.CreatedById.Name}}</small>{{/link-to}}</li>
+		{{/each}}
+	</ul>
+	</aside>
+	<aside>
+	{{outlet}}
+	</aside>
+</div>
+</script>
+
+<script type="text/x-handlebars" data-template-name="account">
+<article>
+{{#if isEditing}}
+{{partial 'account/edit'}}
+<button {{action 'save' this}} class='act'>ok</button>
+<button {{action 'cancel' this}} class='act'>cancel</button>
+<button {{action 'del' this}} class='act'>del</button>
+{{else}}
+{{partial 'account/view'}}
+<button {{action 'edit'}} class='act'>edit</button>
+{{/if}}
+</article>
+</script>
+
+<script type="text/x-handlebars" data-template-name="account/edit">
+<table class="fields">
+	<tbody>
+		<tr><th>Name</th>{{input class='content' type='text' value=Name}}</tr>
+		<tr><th>Description</th>{{textarea class='content' value=Description}}</tr>
+	</tbody>
+</table>
+</script>
+<!-- {{input type="text" value=Name}} -->
+	
+<script type="text/x-handlebars" data-template-name="account/view">
+<table class="fields">
+	<tbody>
+		<tr><th>Name</th><td class='content'>{{Name}}</td></tr>
+		<tr><th>Description</th><td class='content'>{{Description}}</td></tr>
+	</tbody>
+</table>
+</script>
+
+<script>
+// Get the user info like id, name etc..
+var UserInfo = sforce.connection.getUserInfo();
+// A type fileter to only generate ember models for the salesforce objects that are actually
+// being used
+var typeFilter = function(obj) {
+	return obj.name === 'Account' || obj.name === 'User';
+};
+
+// Initialise you app in a callback. I.e after the ember models have been created for the appropriate
+// salesforce objects
+Papu.SF.createEmberModels(typeFilter, function() {
+// 	Set the force adapter as the adapter for your app
+	App.ApplicationAdapter = Papu.SF.Adapter;
+	
+// 	From here on everything is standard ember - define your routes, and controllers
+	App.Router.map(function() {
+		this.resource('accounts', function() {
+			this.resource('account', { path: ':account_id' });
+		});
+	});
+	
+	App.AccountsRoute = Ember.Route.extend({
+		isInitialised : false,
+		model : function() {
+			if(!this.isInitialised) {
+				var res = this.store.findAll('account');
+				if(res)
+					this.isInitialised = true;
+				return res;
+			}
+			return this.store.peekAll('account');
+		}
+	});
+	
+	App.AccountRoute = Ember.Route.extend({
+		model : function(params) {
+			return this.store.find('account', params.account_id);
+		}
+	});
+	
+	App.AccountsController = Ember.ArrayController.extend({
+		actions : {
+			add : function() {
+				var that = this;
+				this.store.find('user', UserInfo.userId).then(function(user) {
+					var acc = that.store.createRecord('account', {
+						Name : 'Potential Customer',
+						Description : 'Customer description',
+					});
+					acc.set('OwnerId', user);
+					acc.save().then(function(){
+						that.transitionToRoute('account', acc);
+					});
+				});
+			},
+		}
+	});
+	
+	App.AccountController = Ember.ObjectController.extend({
+		init : function() {
+			this.isEditing = false;
+		},
+		actions : {
+			edit : function() {
+				this.set('isEditing', true);
+			},
+			save : function(acc) {
+				this.set('isEditing', false);
+				acc.save();
+			},
+			cancel : function(acc) {
+				this.set('isEditing', false);
+				acc.rollback();
+			},
+			del : function(acc) {
+				this.set('isEditing', false);
+				var accs = this.store.peekAll('account').toArray();
+				var idx = accs.indexOf(acc);
+				acc.destroyRecord();
+				accs.splice(idx, 1);
+				surroundingAccs = accs.objectsAt([idx-1, idx, idx+1]);
+				for(var i = 0; i < surroundingAccs.length; i++) {
+					var nextAcc = surroundingAccs[i];
+					if(typeof nextAcc !== 'undefined') {
+						this.transitionToRoute('account', nextAcc);
+						break;
+					}
+				}
+			}
+		}
+	});
+});
+</script>
+<!-- Styles :  -->
+<!-- I made all styles inline to make the demo page easier to setup. In salesforce you would  -->
+<!-- generally put style into a static resource either standalone or multiple files into  -->
+<!-- a zipped resource -->
+
+<!-- I have added a style reset so that the page looks the same across browsers -->
+<style>
+/* http://meyerweb.com/eric/tools/css/reset/ 
+   v2.0 | 20110126
+   License: none (public domain)
+*/
+
+html, body, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, embed, 
+figure, figcaption, footer, header, hgroup, 
+menu, nav, output, ruby, section, summary,
+time, mark, audio, video {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	font-size: 100%;
+	font: inherit;
+	vertical-align: baseline;
+	box-sizing: border-box;
+}
+/* HTML5 display-role reset for older browsers */
+article, aside, details, figcaption, figure, 
+footer, header, hgroup, menu, nav, section {
+	display: block;
+}
+body {
+	line-height: 1;
+}
+ol, ul {
+	list-style: none;
+}
+blockquote, q {
+	quotes: none;
+}
+blockquote:before, blockquote:after,
+q:before, q:after {
+	content: '';
+	content: none;
+}
+table {
+	border-collapse: collapse;
+	border-spacing: 0;
+}
+a:link {
+    text-decoration: none;
+}
+</style>
+
+<!-- Here are the actual styles for the page -->
+<style>
+body {
+	font: 1.2rem Arial, Helvetica, sans-serif;
+	box-sizing: border-box;
+	background-color: #f9f3e0;
+}
+
+a {
+	color : white;
+}
+
+li {
+	padding : 0.4rem;
+	margin : 0.3rem;
+	border-radius : 0.25rem 1rem 0.25rem 0.25rem;
+	box-shadow: -0.075rem 0.075rem 0.05rem #444444;;
+}
+menu {
+	margin : .3rem 1.75rem .3rem 1.75rem;
+}
+
+.nav {
+	padding : .5rem;
+/* 	margin-bottom : .2rem; */
+	background-color : #aaa;
+}
+
+.nav li {
+	background-color : #59f;
+	width : 10rem;
+}
+
+.so-list-view ul {
+	width : 20rem;
+	float : left;
+}
+.so-list-view li {
+	background-color : #5bf;
+}
+.so-list-view aside {
+	float : left;
+}
+.so-list-view article {
+	margin : 0.3rem;
+	padding : 1.5rem;
+	border-radius : 3rem 1rem 0.25rem 3rem;
+	box-shadow: -0.075rem 0.075rem 0.05rem #444444;;
+	background-color : white;
+}
+.act {
+	color : #555;
+	border : 1px solid #888;
+/* 	background-color : #eee; */
+	font-size : .75rem;
+	font-weight : bold;
+	border-radius : 0.25rem;
+	padding : .25rem;
+	margin : .075rem;
+	background-image : -webkit-radial-gradient(80% 40%, circle farthest-corner, #eee, #ddd);
+	box-shadow: -0.025rem 0.025rem 0.025rem #888;
+}
+.mute-info {
+	font-size : 0.75rem;
+	font-weight : bold;
+}
+.mute-info:before {
+	content : ' - '
+}
+.fields {
+	font-size : 1rem;
+/* 	margin : 1rem; */
+}
+.fields th {
+	font-weight : bold;
+	min-width : 7rem;
+	color : #555;
+	text-align : right;
+	height : 1.5rem;
+	vertical-align : top;
+}
+.fields th:after {
+	content: ' : ';
+}
+.fields .content {
+	font-size : 1rem;
+	min-width : 15rem;
+	max-width : 32rem;
+	text-align : left;
+	min-height : 1.5rem;
+	max-height : 10rem;
+	margin-bottom : 0.2rem;
+	padding-left : .5rem
+}
+</style>
+</body>
+</html>
+</apex:page>
