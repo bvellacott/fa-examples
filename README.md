@@ -59,3 +59,6 @@ https://developer.salesforce.com/docs/atlas.en-us.api.meta/api/field_types.htm. 
 		           'masterrecord' : 'string'
 
 You can easily find this list in the forceAdapter.resource file and modify it if you have your own primitive types defined for ember.
+
+# The nice thing about using the soap api
+The nice thing is that you get to utilise the where clause in all its power. When you query an object using the standard ember method the query string that you insert translates to a where clause in salesforce soql.
