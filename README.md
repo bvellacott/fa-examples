@@ -1,4 +1,4 @@
-# fa-examples
+# salesforce ember adapter : examples
 Contains examples of using the force adapter
 
 # To setup the examples in a salesforce developer org follow these steps
